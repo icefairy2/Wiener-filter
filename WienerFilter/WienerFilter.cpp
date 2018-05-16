@@ -2,24 +2,10 @@
 #include "common.h"
 #include <random>
 
-#define WINDOW_SIZE 2
+#define WINDOW_SIZE 5
 
 #define NOISE_MEAN 0
 #define NOISE_VAR 10
-
-
-Mat to_uchar_mat(Mat img)
-{
-	Mat dst = Mat(img.rows, img.cols, CV_8UC1);
-	for (int i = 0; i < img.rows; i++)
-	{
-		for (int j = 0; j < img.cols; j++)
-		{
-			dst.at<uchar>(i, j) = (uchar)img.at<float>(i, j);
-		}
-	}
-	return dst;
-}
 
 // Calculate MSE, the mean squared error
 double mean_squared_error(Mat orig_img, Mat result_img)
@@ -71,7 +57,7 @@ double local_stddev_5(Mat noisy_img, int row, int col, double local_mean)
 			{
 				for (int j = col - WINDOW_SIZE; j <= col + WINDOW_SIZE; j++)
 				{
-					stddev += pow(noisy_img.at<uchar>(i, j) - local_mean, 2);
+					stddev += (double)pow(noisy_img.at<uchar>(i, j) - local_mean, 2);
 				}
 			}
 			stddev /= (double)pow(2 * WINDOW_SIZE + 1, 2);
@@ -85,7 +71,6 @@ double local_stddev_5(Mat noisy_img, int row, int col, double local_mean)
 //Spatial Lee
 void simple_wiener(Mat img, Mat noisy_img)
 {
-	Mat dst_float = Mat(img.rows, img.cols, CV_32FC1);
 	Mat dst = Mat(img.rows, img.cols, CV_8UC1);
 	img.copyTo(dst);
 
@@ -93,18 +78,23 @@ void simple_wiener(Mat img, Mat noisy_img)
 	double stddev_x;
 	double term;
 
-	for (int i = WINDOW_SIZE; i < img.rows - WINDOW_SIZE; i++)
+	double var;
+
+	for (int i = WINDOW_SIZE; i < noisy_img.rows - WINDOW_SIZE; i++)
 	{
-		for (int j = WINDOW_SIZE; j < img.cols - WINDOW_SIZE; j++)
+		for (int j = WINDOW_SIZE; j < noisy_img.cols - WINDOW_SIZE; j++)
 		{
 			mean_x = local_mean_4(noisy_img, i, j);
+			//std::cout << "Mean: " << mean_x << std::endl;
 			stddev_x = local_stddev_5(noisy_img, i, j, mean_x);
+			//std::cout << "Standard Dev: " << stddev_x << std::endl;
 			term = stddev_x / (stddev_x + NOISE_VAR);
-			dst_float.at<float>(i, j) = term * (noisy_img.at<uchar>(i, j) - mean_x) + mean_x;
+			//std::cout << "Term: " << term << std::endl;
+			var = term * (noisy_img.at<uchar>(i, j) - mean_x) + mean_x;
+			//std::cout << "Var: " << var << "  " << (int)var << std::endl;
+			dst.at<uchar>(i, j) = (int)var;
 		}
 	}
-
-	dst = to_uchar_mat(dst_float);
 
 	std::cout << "MSE of original image and the simple Wiener filtered: " << mean_squared_error(img, dst) << std::endl;
 
