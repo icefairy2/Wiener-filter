@@ -26,6 +26,50 @@ double mean_squared_error(Mat orig_img, Mat result_img)
 	return mse;
 }
 
+//Gaussian blur
+Mat gaussian_2d_filter(Mat img, Mat noisy_img)
+{
+	Mat dst = Mat(noisy_img.rows, noisy_img.cols, CV_8UC1);
+
+	img.copyTo(dst);
+
+	int i, j, x, y;
+	float g[200][200];
+
+	float sigma = (float)WINDOW_SIZE / 6;
+	float term = 1 / (2 * PI *pow(sigma, 2));
+
+	for (x = 0; x < WINDOW_SIZE; x++)
+	{
+		for (y = 0; y < WINDOW_SIZE; y++)
+		{
+			g[x][y] = term * exp(-(pow(x - WINDOW_SIZE / 2, 2) + pow(y - WINDOW_SIZE / 2, 2)) / (2 * pow(sigma, 2)));
+		}
+	}
+
+	float conv;
+
+	for (i = WINDOW_SIZE / 2; i < noisy_img.rows - WINDOW_SIZE / 2; i++)
+	{
+		for (j = WINDOW_SIZE / 2; j < noisy_img.cols - WINDOW_SIZE / 2; j++)
+		{
+			conv = 0;
+			for (x = 0; x < WINDOW_SIZE; x++)
+			{
+				for (y = 0; y < WINDOW_SIZE; y++)
+				{
+					conv += g[x][y] * (float)noisy_img.at<uchar>(i + x - WINDOW_SIZE / 2, j + y - WINDOW_SIZE / 2);
+				}
+			}
+			dst.at<uchar>(i, j) = conv;
+		}
+	}
+
+	std::cout << "MSE of original image and the Gauss blurred: " << mean_squared_error(img, dst) << std::endl;
+
+	return dst;
+}
+
 //Calculate weight
 double weight_7(Mat noisy_img, int i, int j, int p, int q)
 {
@@ -68,30 +112,6 @@ double local_mean_4(Mat noisy_img, int row, int col)
 				for (int j = col - WINDOW_SIZE; j <= col + WINDOW_SIZE; j++)
 				{
 					mean += noisy_img.at<uchar>(i, j);
-				}
-			}
-			mean /= (double)pow(2 * WINDOW_SIZE + 1, 2);
-			return mean;
-		}
-	}
-	return 0;
-}
-
-//Calculate local mean
-double local_mean_9(Mat noisy_img, int row, int col)
-{
-	if (row - WINDOW_SIZE >= 0 && row + WINDOW_SIZE < noisy_img.rows)
-	{
-		if (col - WINDOW_SIZE >= 0 && col + WINDOW_SIZE < noisy_img.cols)
-		{
-			double mean = 0;
-			double weight = 0;
-			for (int i = row - WINDOW_SIZE; i <= row + WINDOW_SIZE; i++)
-			{
-				for (int j = col - WINDOW_SIZE; j <= col + WINDOW_SIZE; j++)
-				{
-					weight = weight_7(noisy_img, row, col, i, j);
-					mean += weight * noisy_img.at<uchar>(i, j);
 				}
 			}
 			mean /= (double)pow(2 * WINDOW_SIZE + 1, 2);
@@ -183,7 +203,7 @@ void simple_wiener(Mat img, Mat noisy_img)
 	waitKey(0);
 }
 
-//Spatial Lee
+//Spatial Kuan AWA
 void kuan_wiener(Mat img, Mat noisy_img)
 {
 	Mat dst = Mat(img.rows, img.cols, CV_8UC1);
@@ -201,7 +221,17 @@ void kuan_wiener(Mat img, Mat noisy_img)
 		{
 			mean_x = local_mean_4(noisy_img, i, j);
 			//std::cout << "Mean: " << mean_x << std::endl;
-			stddev_x = local_stddev_6(noisy_img, i, j, mean_x);
+			//stddev_x = local_stddev_6(noisy_img, i, j, mean_x);					
+			double weight = 0;
+			stddev_x = 0;
+			for (int p = i - WINDOW_SIZE; p <= i + WINDOW_SIZE; p++)
+			{
+				for (int q = j - WINDOW_SIZE; q <= j + WINDOW_SIZE; q++)
+				{
+					weight = weight_7(noisy_img, i, j, p, q);
+					stddev_x += (double)weight * pow(noisy_img.at<uchar>(p, q) - mean_x, 2);
+				}
+			}
 			//std::cout << "Standard Dev: " << stddev_x << std::endl;
 			term = stddev_x / (stddev_x + NOISE_VAR * NOISE_VAR);
 			//std::cout << "Term: " << term << std::endl;
@@ -211,16 +241,17 @@ void kuan_wiener(Mat img, Mat noisy_img)
 		}
 	}
 
-	std::cout << "MSE of original image and the simple Wiener filtered: " << mean_squared_error(img, dst) << std::endl;
+	std::cout << "MSE of original image and the Kuan Wiener filtered: " << mean_squared_error(img, dst) << std::endl;
 
-	imshow("Simple Wiener", dst);
+	imshow("Kuan Wiener", dst);
 	waitKey(0);
 }
 
-//Spatial Lee
+//Spatial AWA
 void awa_wiener(Mat img, Mat noisy_img)
 {
 	Mat dst = Mat(img.rows, img.cols, CV_8UC1);
+	Mat means = Mat::zeros(img.rows, img.cols, CV_32FC1);
 	img.copyTo(dst);
 
 	double mean_x;
@@ -228,14 +259,43 @@ void awa_wiener(Mat img, Mat noisy_img)
 	double term;
 
 	double var;
+	double mean;
+	double weight;
+
+	//calculate weights
+	for (int i = WINDOW_SIZE; i < noisy_img.rows - WINDOW_SIZE; i++)
+	{
+		for (int j = WINDOW_SIZE; j < noisy_img.cols - WINDOW_SIZE; j++)
+		{
+			mean = 0;
+			for (int p = i - WINDOW_SIZE; p <= i + WINDOW_SIZE; p++)
+			{
+				for (int q = j - WINDOW_SIZE; q <= j + WINDOW_SIZE; q++)
+				{
+					weight = weight_7(noisy_img, i, j, p, q);
+					mean += weight * noisy_img.at<uchar>(p, q);
+				}
+			}
+			means.at<float>(i, j) = mean;
+		}
+	}
 
 	for (int i = WINDOW_SIZE; i < noisy_img.rows - WINDOW_SIZE; i++)
 	{
 		for (int j = WINDOW_SIZE; j < noisy_img.cols - WINDOW_SIZE; j++)
 		{
-			mean_x = local_mean_9(noisy_img, i, j);
+			mean_x = means.at<float>(i, j);
 			//std::cout << "Mean: " << mean_x << std::endl;
-			stddev_x = local_stddev_6(noisy_img, i, j, mean_x);
+			//stddev_x = local_stddev_6(noisy_img, i, j, mean_x, weights.at<float>(i, j));
+			stddev_x = 0;
+			for (int p = i - WINDOW_SIZE; p <= i + WINDOW_SIZE; p++)
+			{
+				for (int q = j - WINDOW_SIZE; q <= j + WINDOW_SIZE; q++)
+				{
+					weight = weight_7(noisy_img, i, j, p, q);
+					stddev_x += weight * pow(noisy_img.at<uchar>(p, q) - mean_x, 2);
+				}
+			}
 			//std::cout << "Standard Dev: " << stddev_x << std::endl;
 			term = stddev_x / (stddev_x + NOISE_VAR * NOISE_VAR);
 			//std::cout << "Term: " << term << std::endl;
@@ -245,11 +305,12 @@ void awa_wiener(Mat img, Mat noisy_img)
 		}
 	}
 
-	std::cout << "MSE of original image and the simple Wiener filtered: " << mean_squared_error(img, dst) << std::endl;
+	std::cout << "MSE of original image and the awa Wiener filtered: " << mean_squared_error(img, dst) << std::endl;
 
-	imshow("Simple Wiener", dst);
+	imshow("AWA Wiener", dst);
 	waitKey(0);
 }
+
 
 int main(int argc, char* argv[])
 {
@@ -257,6 +318,7 @@ int main(int argc, char* argv[])
 	while (openFileDlg(fname)) {
 		Mat img = imread(fname, CV_LOAD_IMAGE_GRAYSCALE);
 		Mat noisy_img = Mat(img.rows, img.cols, CV_8UC1);
+		Mat gauss_blur;
 
 		// Define random generator with Gaussian distribution
 		std::default_random_engine generator;
@@ -282,12 +344,45 @@ int main(int argc, char* argv[])
 
 		}
 
-		std::cout << "MSE of original image and the noisy: " << mean_squared_error(img, noisy_img) << std::endl;
+		gauss_blur = gaussian_2d_filter(img, noisy_img);
 
-		imshow("Image", img);
-		imshow("Noisy", noisy_img);
+		std::cout << std::endl;
 
-		awa_wiener(img, noisy_img);
+		std::cout << "Choose your filtering method:" << std::endl;
+		std::cout << "1 - Spatial Lee - simple Wiener filter" << std::endl;
+		std::cout << "2 - Spatial Kuan AWA - only the standard deviation is weighted" << std::endl;
+		std::cout << "3 - Spatial AWA - adaptive Wiener filter" << std::endl;
+
+		int method;
+		std::cin >> method;
+		switch (method)
+		{
+		case 1:
+			imshow("Image", img);
+			imshow("Noisy", noisy_img);
+			imshow("Gauss blur", gauss_blur);
+			std::cout << "MSE of original image and the noisy: " << mean_squared_error(img, noisy_img) << std::endl;
+			simple_wiener(img, noisy_img);
+		case 2:
+			imshow("Image", img);
+			imshow("Noisy", noisy_img);
+			imshow("Gauss blur", gauss_blur);
+			std::cout << "MSE of original image and the noisy: " << mean_squared_error(img, noisy_img) << std::endl;
+
+			kuan_wiener(img, noisy_img);
+		case 3:
+			imshow("Image", img);
+			imshow("Noisy", noisy_img);
+			imshow("Gauss blur", gauss_blur);
+			std::cout << "MSE of original image and the noisy: " << mean_squared_error(img, noisy_img) << std::endl;
+			awa_wiener(img, noisy_img);
+		default:
+			imshow("Image", img);
+			imshow("Noisy", noisy_img);
+			imshow("Gauss blur", gauss_blur);
+			std::cout << "MSE of original image and the noisy: " << mean_squared_error(img, noisy_img) << std::endl;
+			std::cout << "Wrong input!" << std::endl;
+		}
 	}
 	return 0;
 }
