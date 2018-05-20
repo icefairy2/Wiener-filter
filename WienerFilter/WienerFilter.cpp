@@ -8,7 +8,7 @@
 #define NOISE_VAR 10
 
 #define EPSILON 2.5 * NOISE_VAR
-#define WA 0.5
+#define WA 0.1
 
 // Calculate MSE, the mean squared error
 double mean_squared_error(Mat orig_img, Mat result_img)
@@ -35,30 +35,31 @@ Mat gaussian_2d_filter(Mat img, Mat noisy_img)
 
 	int i, j, x, y;
 	float g[200][200];
+	int w = WINDOW_SIZE;//2 * WINDOW_SIZE + 1;
 
-	float sigma = (float)WINDOW_SIZE / 6;
+	float sigma = (float)w / 6;
 	float term = 1 / (2 * PI *pow(sigma, 2));
 
-	for (x = 0; x < WINDOW_SIZE; x++)
+	for (x = 0; x < w; x++)
 	{
-		for (y = 0; y < WINDOW_SIZE; y++)
+		for (y = 0; y < w; y++)
 		{
-			g[x][y] = term * exp(-(pow(x - WINDOW_SIZE / 2, 2) + pow(y - WINDOW_SIZE / 2, 2)) / (2 * pow(sigma, 2)));
+			g[x][y] = term * exp(-(pow(x - w / 2, 2) + pow(y - w / 2, 2)) / (2 * pow(sigma, 2)));
 		}
 	}
 
 	float conv;
 
-	for (i = WINDOW_SIZE / 2; i < noisy_img.rows - WINDOW_SIZE / 2; i++)
+	for (i = w / 2; i < noisy_img.rows - w / 2; i++)
 	{
-		for (j = WINDOW_SIZE / 2; j < noisy_img.cols - WINDOW_SIZE / 2; j++)
+		for (j = w / 2; j < noisy_img.cols - w / 2; j++)
 		{
 			conv = 0;
-			for (x = 0; x < WINDOW_SIZE; x++)
+			for (x = 0; x < w; x++)
 			{
-				for (y = 0; y < WINDOW_SIZE; y++)
+				for (y = 0; y < w; y++)
 				{
-					conv += g[x][y] * (float)noisy_img.at<uchar>(i + x - WINDOW_SIZE / 2, j + y - WINDOW_SIZE / 2);
+					conv += g[x][y] * (float)noisy_img.at<uchar>(i + x - w / 2, j + y - w / 2);
 				}
 			}
 			dst.at<uchar>(i, j) = conv;
@@ -144,31 +145,6 @@ double local_stddev_5(Mat noisy_img, int row, int col, double local_mean)
 	return 0;
 }
 
-//Calculate local standard deviation
-double local_stddev_6(Mat noisy_img, int row, int col, double local_mean)
-{
-	if (row - WINDOW_SIZE >= 0 && row + WINDOW_SIZE < noisy_img.rows)
-	{
-		if (col - WINDOW_SIZE >= 0 && col + WINDOW_SIZE < noisy_img.cols)
-		{
-			double stddev = 0;
-			double weight = 0;
-			for (int i = row - WINDOW_SIZE; i <= row + WINDOW_SIZE; i++)
-			{
-				for (int j = col - WINDOW_SIZE; j <= col + WINDOW_SIZE; j++)
-				{
-					weight = weight_7(noisy_img, row, col, i, j);
-					stddev += (double)weight * pow(noisy_img.at<uchar>(i, j) - local_mean, 2);
-				}
-			}
-			stddev /= (double)pow(2 * WINDOW_SIZE + 1, 2);
-			stddev -= NOISE_VAR * NOISE_VAR;
-			return stddev;
-		}
-	}
-	return 0;
-}
-
 //Spatial Lee
 void simple_wiener(Mat img, Mat noisy_img)
 {
@@ -220,8 +196,7 @@ void kuan_wiener(Mat img, Mat noisy_img)
 		for (int j = WINDOW_SIZE; j < noisy_img.cols - WINDOW_SIZE; j++)
 		{
 			mean_x = local_mean_4(noisy_img, i, j);
-			//std::cout << "Mean: " << mean_x << std::endl;
-			//stddev_x = local_stddev_6(noisy_img, i, j, mean_x);					
+			//std::cout << "Mean: " << mean_x << std::endl;					
 			double weight = 0;
 			stddev_x = 0;
 			for (int p = i - WINDOW_SIZE; p <= i + WINDOW_SIZE; p++)
@@ -286,7 +261,6 @@ void awa_wiener(Mat img, Mat noisy_img)
 		{
 			mean_x = means.at<float>(i, j);
 			//std::cout << "Mean: " << mean_x << std::endl;
-			//stddev_x = local_stddev_6(noisy_img, i, j, mean_x, weights.at<float>(i, j));
 			stddev_x = 0;
 			for (int p = i - WINDOW_SIZE; p <= i + WINDOW_SIZE; p++)
 			{
